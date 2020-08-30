@@ -24,18 +24,19 @@ def slack_help():
         "`apply` : this command is used for applying for leaves, just enter one line in the specified format and " \
                "voila, your task is done.\n`check` : this command is used for checking your current leave balance." \
                "\nSince you're here, let me make you familiar with the formats, here are the `apply` command formats:" \
-               "\n `apply` <type> `leave` `from` 22/08/20 `till` 30/08/20 `reason` <your reason>\n or " \
-               "\n `apply` <type> `leave` for `today/tomorrow` `reason` <your reason> " \
+               "\n `apply` <type> `leave` `from` <DD/MM/YY> `till` <DD/MM/YY> `reason` <your reason>\n or " \
+               "\n `apply` <type> `leave` `for` <today/tomorrow/yesterday> `reason` <your reason> " \
                "\nWhere as `check` is a standalone command. \nHope this helps. :D"
     return response
 
 
 def get_user_data(user_id):
-    response = auth_client.api_call("users.profile.get", data={'user': user_id})
+    response = auth_client.api_call("users.info", data={'user': user_id})
     if response:
         user_data = {
-            'name': response['profile']['real_name'],
-            'email': response['profile']['email']
+            'name': response['user']['real_name'],
+            'email': response['user']['profile']['email'],
+            'timezone': response['user']['tz']
         }
         return user_data
     return None
