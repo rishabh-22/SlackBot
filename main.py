@@ -2,7 +2,7 @@ import os
 import re
 import pendulum
 from slack import WebClient, RTMClient
-from slack_util import slack_help, check_leaves, get_user_data
+from utils import slack_help, check_leaves, get_user_data, record_transaction
 
 
 @RTMClient.run_on(event="message")
@@ -18,7 +18,7 @@ def listen_to_message(**payload):
         channel = data['channel']
         process_data({'user': user, 'message': message, 'message_id': message_id, 'channel': channel, 'time': time})
     except Exception as e:
-        print(e)
+        # print(e)
         return None
 
 
@@ -38,7 +38,7 @@ def fetch_day(day, timezone):
 
 
 def process_data(data):
-    # keywords = [help, apply, for, from, till, leave, reason, today, tomorrow, paid, casual, sick]
+    # keywords = [help, apply, for, from, till, leave, reason, yesterday, today, tomorrow, paid, casual, sick]
     words = data['message'].split()
 
     if len(words) == 1 and words[0] == 'help':
@@ -62,6 +62,12 @@ def process_data(data):
             if 'for' in words:
                 reason = ' '.join(words[6:])
                 day = fetch_day(words[4], user_data['timezone'])
+                response = record_transaction(user_data['email'], leave_type, day, day, reason,
+                                              data['message_id'], data['time'])
+                web_client.chat_postMessage(
+                    channel=data['channel'],
+                    text=response
+                )
 
             elif 'from' and 'till' in words:
                 reason = ' '.join(words[8:])
@@ -70,13 +76,31 @@ def process_data(data):
 
                 # dealing with till day:
                 end_day = fetch_day(words[6], user_data['timezone'])
-
-            # call the required function with inputs: user_data['email'], leave_type, from_day, till_day, reason
-            # this function will be the record transaction function. send message_id and event_time too.
+                delta = end_day - start_day
+                if delta.days < 0:
+                    # return validation error
+                    web_client.chat_postMessage(
+                        channel=data['channel'],
+                        text="Please put in proper date. Start date can't be prior to end date."
+                    )
+                response = record_transaction(user_data['email'], leave_type, start_day, end_day, reason,
+                                              data['message_id'], data['time'])
+                web_client.chat_postMessage(
+                    channel=data['channel'],
+                    text=response
+                )
 
         except Exception as e:
             print(e)
-            return "Seems like there's some problem with the input."
+            web_client.chat_postMessage(
+                channel=data['channel'],
+                text="Seems like there's some problem with the input."
+            )
+    else:
+        web_client.chat_postMessage(
+            channel=data['channel'],
+            text="Seems like there's some problem with the input."
+        )
 
 
 # def deal_with_data(data):
