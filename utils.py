@@ -50,8 +50,9 @@ def get_user_data(user_id):
 
 
 def check_leaves(user):
-    data = get_user_data(user)
-    balance = leaves_db.get(data.get('email'))
+    user_data = get_user_data(user)
+    leave_data = leaves.find_one({"_id": user_data['email']})
+    balance = leave_data['balance']
     if balance:
         response = ''
         for k, v in balance.items():
@@ -67,7 +68,10 @@ def calculate_leaves(from_day, till_day):
 
 
 def update_leaves(user_email, leave_type, total_leaves):
-    pass
+    data = leaves.find_one({"_id": user_email})
+    previous = data['balance'][leave_type]
+    updated = previous - total_leaves
+    return leaves.update_one({"_id": user_email}, {"$set":  {f"balance.{leave_type}": updated}}).acknowledged
 
 
 def record_transaction(user_email, leave_type, from_day, till_day, reason, message_id, event_time):
@@ -102,9 +106,11 @@ def record_transaction(user_email, leave_type, from_day, till_day, reason, messa
         }).acknowledged
         # update the leaves table as well by deducting the balance.
         if check:
-            update_leaves(user_email, leave_type, total_leaves)
-            return "Your leave(s) have been updated with the system and " \
-                   "a notification has been sent to your colleagues."
+            if update_leaves(user_email, leave_type, total_leaves):
+                return "Your leave(s) have been successfully updated with the system and " \
+                       "a notification has been sent to your colleagues."
+            else:
+                return "Sorry we're facing some issue at the backend, please try again later.", False
     except KeyError:
         return "Please look at the input value for leave type!"
     except Exception as e:

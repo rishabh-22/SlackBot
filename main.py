@@ -37,37 +37,38 @@ def fetch_day(day, timezone):
         return "Seems like there's some problem with the date input."
 
 
+def send_message_to_chat(channel, response):
+    web_client.chat_postMessage(
+        channel=channel,
+        text=response
+    )
+
+
 def process_data(data):
     # keywords = [help, apply, for, from, till, leave, reason, yesterday, today, tomorrow, paid, casual, sick]
     words = data['message'].split()
 
     if len(words) == 1 and words[0] == 'help':
         response = slack_help()
-        web_client.chat_postMessage(
-            channel=data['channel'],
-            text=response,
-        )
+        send_message_to_chat(data['channel'], response)
 
-    if len(words) == 1 and words[0] == 'check':
+    elif len(words) == 1 and words[0] == 'check':
         response = check_leaves(data['user'])
-        web_client.chat_postMessage(
-            channel=data['channel'],
-            text=response,
-        )
+        send_message_to_chat(data['channel'], response)
 
-    if words[0] == 'apply':
+    elif words[0] == 'apply':
         user_data = get_user_data(data['user'])
         leave_type = words[1]
         try:
             if 'for' in words:
                 reason = ' '.join(words[6:])
                 day = fetch_day(words[4], user_data['timezone'])
+                # if not reason: response="please insert reason as well." return.
                 response = record_transaction(user_data['email'], leave_type, day, day, reason,
                                               data['message_id'], data['time'])
-                web_client.chat_postMessage(
-                    channel=data['channel'],
-                    text=response
-                )
+                # if 'success' in response:
+                #     send_message_to_chat("#general")
+                send_message_to_chat(data['channel'], response)
 
             elif 'from' and 'till' in words:
                 reason = ' '.join(words[8:])
@@ -79,33 +80,19 @@ def process_data(data):
                 delta = end_day - start_day
                 if delta.days < 0:
                     # return validation error
-                    web_client.chat_postMessage(
-                        channel=data['channel'],
-                        text="Please put in proper date. Start date can't be prior to end date."
-                    )
+                    return send_message_to_chat(data['channel'], "Please put in proper date. "   # return from here
+                                                                 "End date can't be prior to start date.")
                 response = record_transaction(user_data['email'], leave_type, start_day, end_day, reason,
                                               data['message_id'], data['time'])
-                web_client.chat_postMessage(
-                    channel=data['channel'],
-                    text=response
-                )
+                send_message_to_chat(data['channel'], response)
+
+                # apply reason checks.
 
         except Exception as e:
             print(e)
-            web_client.chat_postMessage(
-                channel=data['channel'],
-                text="Seems like there's some problem with the input."
-            )
+            send_message_to_chat(data['channel'], "Seems like there's some problem with the input.")
     else:
-        web_client.chat_postMessage(
-            channel=data['channel'],
-            text="Seems like there's some problem with the input."
-        )
-
-
-# def deal_with_data(data):
-#     if data:
-#         process_message(data['message'], data['user'], data['channel'])
+        send_message_to_chat(data['channel'], "Seems like there's some problem with the input.")
 
 
 if __name__ == '__main__':
