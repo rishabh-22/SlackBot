@@ -11,21 +11,11 @@ leaves = db.get_collection('leaves')
 transactions = db.get_collection('transactions')
 
 
-leaves_db = {
-    'rishabh.bh22@gmail.com': {
-        'paid': 18,
-        'casual': 3,
-        'sick': 2
-    },
-    'devang.gaur.7@gmail.com': {
-        'paid': 8,
-        'casual': 2,
-        'sick': 4
-    },
-}
-
-
 def slack_help():
+    """
+    this function return the help text.
+    :return:
+    """
     response = "Hello! I am leaveBot, here to make it easy for you to apply for leaves.\n"\
         "I apply for leaves on your behalf. Here's the list off commands you can use with me:\n"\
         "`apply` : this command is used for applying for leaves, just enter one line in the specified format and " \
@@ -38,6 +28,12 @@ def slack_help():
 
 
 def get_user_data(user_id):
+    """
+    this function fetches the data of the user from slack API.
+    :param user_id:
+    :return:
+    """
+
     response = auth_client.api_call("users.info", data={'user': user_id})
     if response:
         user_data = {
@@ -50,28 +46,56 @@ def get_user_data(user_id):
 
 
 def check_leaves(user):
-    user_data = get_user_data(user)
-    leave_data = leaves.find_one({"_id": user_data['email']})
-    balance = leave_data['balance']
-    if balance:
-        response = ''
-        for k, v in balance.items():
-            response += k + ':' + str(v) + ' \n'
-        return "Here's your leave balance:\n" + response
-    else:
+    """
+    this function fetches the userdata from slack api and then uses
+    that data to fetch the leave balance from the database
+    :param user:
+    :return:
+    """
+    # TODO: implement logging to check if api req failed or the database call.
+
+    try:
+        user_data = get_user_data(user)
+        if not user_data:
+            print("slack api failed.")
+
+        leave_data = leaves.find_one({"_id": user_data['email']})
+        if not leave_data:
+            print("database call failed.")
+
+        balance = leave_data['balance']
+        if balance:
+            response = ''
+            for k, v in balance.items():
+                response += k + ':' + str(v) + ' \n'
+            return "Here's your leave balance:\n" + response
+
+    except KeyError:
         return "Sorry, there seems to be some problem. I couldn't fetch your details."
 
 
 def calculate_leaves(from_day, till_day):
+    """
+    this function calculates the total number of days for leaves excluding the weekends.
+    :param from_day:
+    :param till_day:
+    :return:
+    """
+
     day_generator = (from_day + timedelta(x + 1) for x in range((till_day - from_day).days))
     return 1 + sum(1 for day in day_generator if day.weekday() < 5)
 
 
 def update_leaves(user_email, leave_type, total_leaves):
-    data = leaves.find_one({"_id": user_email})
-    previous = data['balance'][leave_type]
-    updated = previous - total_leaves
-    return leaves.update_one({"_id": user_email}, {"$set":  {f"balance.{leave_type}": updated}}).acknowledged
+    """
+    updates the leaves for the user in the database.
+    :param user_email:
+    :param leave_type:
+    :param total_leaves:
+    :return: acknowledgement
+    """
+    return leaves.update_one({"_id": user_email}, {"$inc": {f"balance.{leave_type}": int(-1*total_leaves)}}).\
+        acknowledged
 
 
 def record_transaction(user_email, leave_type, from_day, till_day, reason, message_id, event_time):
@@ -84,39 +108,50 @@ def record_transaction(user_email, leave_type, from_day, till_day, reason, messa
     :param reason:
     :param message_id:
     :param event_time:
-    :return:
+    :return: dict of response with status and text.
     """
+    response = {
+        'status': False,
+        'text': ""
+    }
     try:
         total_leaves = calculate_leaves(from_day, till_day)
         data = leaves.find_one({"_id": user_email})
 
         if data['balance'][leave_type] < total_leaves:
-            return "Looks like you don't have enough of those leaves. " \
-                   "You can check your leave balance by `check` command."
+            response['text'] = "Looks like you don't have enough of those leaves. " \
+                               "You can check your leave balance by `check` command."
+            return
 
         check = transactions.insert_one({
             "user_email": user_email,
             "leave_type": leave_type,
-            "from": from_day,
+            "from": from_day,  # TODO: check the date format that goes into the database.
             "to": till_day,
             "total_leaves": total_leaves,
             "reason": reason,
             "message_id": message_id,
             "time": event_time
         }).acknowledged
-        # update the leaves table as well by deducting the balance.
+
         if check:
             if update_leaves(user_email, leave_type, total_leaves):
-                return "Your leave(s) have been successfully updated with the system and " \
-                       "a notification has been sent to your colleagues."
+                response['status'] = True
+                response['text'] = "Your leave(s) have been successfully updated with the system and " \
+                                   "a notification has been sent to your colleagues."
+                return
             else:
-                return "Sorry we're facing some issue at the backend, please try again later.", False
+                response['text'] = "Sorry we're facing some issue at the backend, please try again later."
+                return
+
     except KeyError:
-        return "Please look at the input value for leave type!"
+        response['text'] = "Please look at the input value for leave type!"
+        return
     except Exception as e:
         print(e)
-        return "There was some problem with the system, sorry for inconvenience, please try again later."
+        response['text'] = "There was some problem with the system, sorry for inconvenience, please try again later."
+        return
 
-# from_day = pendulum.from_format('3/9/20', 'DD/MM/YY')
-# till_day = pendulum.from_format('9/9/20', 'DD/MM/YY')
-# record_transaction("rishabh.bh22@gmail.com", "casual", from_day, till_day, "", "", "")
+    finally:
+        return response
+

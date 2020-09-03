@@ -8,7 +8,6 @@ from utils import slack_help, check_leaves, get_user_data, record_transaction
 @RTMClient.run_on(event="message")
 def listen_to_message(**payload):
     data = payload['data']
-    web_client = payload['web_client']
 
     try:
         message = data['text']
@@ -18,8 +17,11 @@ def listen_to_message(**payload):
         channel = data['channel']
         process_data({'user': user, 'message': message, 'message_id': message_id, 'channel': channel, 'time': time})
     except Exception as e:
-        # print(e)
+        print("ye starting exception hai", e)
         return None
+
+
+notification_channel = "#general"
 
 
 def fetch_day(day, timezone):
@@ -45,54 +47,74 @@ def send_message_to_chat(channel, response):
 
 
 def process_data(data):
-    # keywords = [help, apply, for, from, till, leave, reason, yesterday, today, tomorrow, paid, casual, sick]
-    words = data['message'].split()
+    """
+    this method deals with the data entered by the user.
+    :param data: dict
+    :return: response to the user on chat.
+    :keyword: [help, apply, for, from, till, leave, reason, yesterday, today, tomorrow, paid, casual, sick]
+    """
 
-    if len(words) == 1 and words[0] == 'help':
-        response = slack_help()
-        send_message_to_chat(data['channel'], response)
+    response = "Seems like there's some problem with the input."
+    user_input = data['message'].split()
 
-    elif len(words) == 1 and words[0] == 'check':
-        response = check_leaves(data['user'])
-        send_message_to_chat(data['channel'], response)
+    try:
 
-    elif words[0] == 'apply':
-        user_data = get_user_data(data['user'])
-        leave_type = words[1]
-        try:
-            if 'for' in words:
-                reason = ' '.join(words[6:])
-                day = fetch_day(words[4], user_data['timezone'])
-                # if not reason: response="please insert reason as well." return.
-                response = record_transaction(user_data['email'], leave_type, day, day, reason,
-                                              data['message_id'], data['time'])
-                # if 'success' in response:
-                #     send_message_to_chat("#general")
-                send_message_to_chat(data['channel'], response)
+        if len(user_input) == 1 and user_input[0] == 'help':
+            response = slack_help()
+            return
 
-            elif 'from' and 'till' in words:
-                reason = ' '.join(words[8:])
+        elif len(user_input) == 1 and user_input[0] == 'check':
+            response = check_leaves(data['user'])
+            return
+
+        elif user_input[0] == 'apply':
+            user_data = get_user_data(data['user'])
+            leave_type = user_input[1]
+
+            if 'for' in user_input:
+                reason = ' '.join(user_input[6:])
+                day = fetch_day(user_input[4], user_data['timezone'])
+                if not reason:
+                    response = "Please insert reason as well. (Followed by keyword `reason`)"
+                    return
+
+                update = record_transaction(user_data['email'], leave_type, day, day, reason,
+                                            data['message_id'], data['time'])
+                response = update['text']
+                if update['status']:
+                    send_message_to_chat(notification_channel, f"Hi Team, {user_data['name']} will be on leave {user_input[4]}. "
+                                                     f"\nReason: {reason}")
+                return
+
+            elif 'from' and 'till' in user_input:
+                reason = ' '.join(user_input[8:])
                 # dealing with from day:
-                start_day = fetch_day(words[4], user_data['timezone'])
+                start_day = fetch_day(user_input[4], user_data['timezone'])
 
                 # dealing with till day:
-                end_day = fetch_day(words[6], user_data['timezone'])
+                end_day = fetch_day(user_input[6], user_data['timezone'])
                 delta = end_day - start_day
-                if delta.days < 0:
-                    # return validation error
-                    return send_message_to_chat(data['channel'], "Please put in proper date. "   # return from here
-                                                                 "End date can't be prior to start date.")
-                response = record_transaction(user_data['email'], leave_type, start_day, end_day, reason,
-                                              data['message_id'], data['time'])
-                send_message_to_chat(data['channel'], response)
+                if delta.days < 0 or delta.hours < 0:
+                    response = "Please put in proper date. End date can't be prior to start date."
+                    return
+                if not reason:
+                    response = "Please insert reason as well. (Followed by keyword `reason`)"
+                    return
 
-                # apply reason checks.
+                update = record_transaction(user_data['email'], leave_type, start_day, end_day, reason,
+                                            data['message_id'], data['time'])
+                response = update['text']
+                if update['status']:
+                    send_message_to_chat(notification_channel, f"Hi Team, {user_data['name']} will be on leave from "
+                                                     f"{start_day.to_date_string()} till {end_day.to_date_string()}. "
+                                                     f"\nReason: {reason}")
+                return
 
-        except Exception as e:
-            print(e)
-            send_message_to_chat(data['channel'], "Seems like there's some problem with the input.")
-    else:
-        send_message_to_chat(data['channel'], "Seems like there's some problem with the input.")
+    except Exception as e:
+        print(e)
+
+    finally:
+        send_message_to_chat(data['channel'], response)
 
 
 if __name__ == '__main__':
