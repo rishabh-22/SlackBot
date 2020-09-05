@@ -23,7 +23,10 @@ def listen_to_message(**payload):
         time = data['event_ts']
         channel = data['channel']
         process_data({'user': user, 'message': message, 'message_id': message_id, 'channel': channel, 'time': time})
-    except Exception:
+    except KeyError:
+        pass
+    except Exception as e:
+        logging.error(e)
         return None
 
 
