@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import pendulum
@@ -7,6 +8,12 @@ from utils import slack_help, check_leaves, get_user_data, record_transaction
 
 @RTMClient.run_on(event="message")
 def listen_to_message(**payload):
+    """
+    this function is responsible for capturing the relevant data in case of a message event.
+    :param payload:
+    :return:
+    """
+
     data = payload['data']
 
     try:
@@ -16,8 +23,10 @@ def listen_to_message(**payload):
         time = data['event_ts']
         channel = data['channel']
         process_data({'user': user, 'message': message, 'message_id': message_id, 'channel': channel, 'time': time})
+    except KeyError:
+        pass
     except Exception as e:
-        print("ye starting exception hai", e)
+        logging.error(e)
         return None
 
 
@@ -25,6 +34,13 @@ notification_channel = "#general"
 
 
 def fetch_day(day, timezone):
+    """
+    this function is responsible for creating a date object based on the user input.
+    :param day:
+    :param timezone:
+    :return:
+    """
+
     try:
         if day == 'today':
             return pendulum.now(tz=timezone)
@@ -35,11 +51,18 @@ def fetch_day(day, timezone):
         elif re.match("^(0?[1-9]|[12][0-9]|3[01])/(0?[1-9]|1[0-2])/\d\d$", day):
             return pendulum.from_format(day, 'DD/MM/YY', tz=timezone)
     except Exception as e:
-        print(e)
+        logging.warning(e)
         return "Seems like there's some problem with the date input."
 
 
 def send_message_to_chat(channel, response):
+    """
+    this function send a message to the specified channel.
+    :param channel:
+    :param response:
+    :return:
+    """
+
     web_client.chat_postMessage(
         channel=channel,
         text=response
@@ -82,8 +105,8 @@ def process_data(data):
                                             data['message_id'], data['time'])
                 response = update['text']
                 if update['status']:
-                    send_message_to_chat(notification_channel, f"Hi Team, {user_data['name']} will be on leave {user_input[4]}. "
-                                                     f"\nReason: {reason}")
+                    send_message_to_chat(notification_channel, f"Hi Team, {user_data['name']} will be on leave "
+                                                               f"{user_input[4]}. \nReason: {reason}")
                 return
 
             elif 'from' and 'till' in user_input:
@@ -111,7 +134,7 @@ def process_data(data):
                 return
 
     except Exception as e:
-        print(e)
+        logging.error(e)
 
     finally:
         send_message_to_chat(data['channel'], response)

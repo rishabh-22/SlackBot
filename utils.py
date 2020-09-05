@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import timedelta
 from slack import WebClient
@@ -52,16 +53,15 @@ def check_leaves(user):
     :param user:
     :return:
     """
-    # TODO: implement logging to check if api req failed or the database call.
 
     try:
         user_data = get_user_data(user)
         if not user_data:
-            print("slack api failed.")
+            logging.error("slack api failed.")
 
         leave_data = leaves.find_one({"_id": user_data['email']})
         if not leave_data:
-            print("database call failed.")
+            logging.error("database call failed.")
 
         balance = leave_data['balance']
         if balance:
@@ -126,8 +126,8 @@ def record_transaction(user_email, leave_type, from_day, till_day, reason, messa
         check = transactions.insert_one({
             "user_email": user_email,
             "leave_type": leave_type,
-            "from": from_day,  # TODO: check the date format that goes into the database.
-            "to": till_day,
+            "from": from_day.to_date_string(),
+            "to": till_day.to_date_string(),
             "total_leaves": total_leaves,
             "reason": reason,
             "message_id": message_id,
@@ -148,7 +148,7 @@ def record_transaction(user_email, leave_type, from_day, till_day, reason, messa
         response['text'] = "Please look at the input value for leave type!"
         return
     except Exception as e:
-        print(e)
+        logging.error(e)
         response['text'] = "There was some problem with the system, sorry for inconvenience, please try again later."
         return
 
